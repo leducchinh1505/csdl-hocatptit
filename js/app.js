@@ -36,8 +36,8 @@ function range(n) { var a = []; for (var i = 0; i < n; i++) a.push(i); return a;
 // ---- Sơ đồ ER ký hiệu Chen ----
 function erd(d) {
   var W = 560, cy = 100, H = d.c ? 232 : 142, cx = W / 2, ink = 'var(--ink)', line = '#7b8798', out = '';
-  function entity(x, y, label) { return '<rect x="' + (x - 62) + '" y="' + (y - 21) + '" width="124" height="42" rx="4" fill="#fdf0c4" stroke="#b58a12" stroke-width="1.4"/><text x="' + x + '" y="' + (y + 5) + '" text-anchor="middle" font-size="14" fill="' + ink + '" font-weight="600">' + esc(label) + '</text>'; }
-  function card(x, y, t) { return '<text x="' + x + '" y="' + y + '" text-anchor="middle" font-size="14" font-weight="700" fill="#2c5fb8">' + esc(t) + '</text>'; }
+  function entity(x, y, label) { return '<rect x="' + (x - 62) + '" y="' + (y - 21) + '" width="124" height="42" rx="4" fill="#fce7f3" stroke="#db2777" stroke-width="1.4"/><text x="' + x + '" y="' + (y + 5) + '" text-anchor="middle" font-size="14" fill="' + ink + '" font-weight="600">' + esc(label) + '</text>'; }
+  function card(x, y, t) { return '<text x="' + x + '" y="' + y + '" text-anchor="middle" font-size="14" font-weight="700" fill="#2563eb">' + esc(t) + '</text>'; }
   var ax = 76, bx = W - 76;
   out += '<line x1="' + (ax + 62) + '" y1="' + cy + '" x2="' + (cx - 68) + '" y2="' + cy + '" stroke="' + line + '" stroke-width="1.4"/>';
   out += '<line x1="' + (cx + 68) + '" y1="' + cy + '" x2="' + (bx - 62) + '" y2="' + cy + '" stroke="' + line + '" stroke-width="1.4"/>';
@@ -48,7 +48,7 @@ function erd(d) {
     out += '<ellipse cx="' + x + '" cy="' + y + '" rx="58" ry="17" fill="#fff" stroke="' + line + '" stroke-width="1.2"/><text x="' + x + '" y="' + (y + 5) + '" text-anchor="middle" font-size="13" fill="' + ink + '">' + esc(a) + '</text>';
   });
   out += entity(ax, cy, d.a) + entity(bx, cy, d.b);
-  out += '<polygon points="' + (cx - 68) + ',' + cy + ' ' + cx + ',' + (cy - 32) + ' ' + (cx + 68) + ',' + cy + ' ' + cx + ',' + (cy + 32) + '" fill="#e4edfb" stroke="#2c5fb8" stroke-width="1.4"/><text x="' + cx + '" y="' + (cy + 5) + '" text-anchor="middle" font-size="14" fill="' + ink + '" font-weight="600">' + esc(d.r) + '</text>';
+  out += '<polygon points="' + (cx - 68) + ',' + cy + ' ' + cx + ',' + (cy - 32) + ' ' + (cx + 68) + ',' + cy + ' ' + cx + ',' + (cy + 32) + '" fill="#dbeafe" stroke="#2563eb" stroke-width="1.4"/><text x="' + cx + '" y="' + (cy + 5) + '" text-anchor="middle" font-size="14" fill="' + ink + '" font-weight="600">' + esc(d.r) + '</text>';
   out += card(ax + 80, cy - 8, d.ac) + card(bx - 80, cy - 8, d.bc);
   if (d.c) { out += entity(cx, 207, d.c) + card(cx + 14, 174, d.cc); }
   return '<svg class="erd" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Sơ đồ ER">' + out + '</svg>';
