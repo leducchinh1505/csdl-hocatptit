@@ -1,7 +1,7 @@
 // Kiểm chứng ngân hàng câu hỏi. Chạy: node verify.js
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const dir = __dirname, ctx = { window: {} }; ctx.QB = undefined; vm.createContext(ctx);
-for (const f of ['q1_mapping', 'q2_design', 'q3_fd', 'q4_algebra', 'q5_nf', 'q1b_mapping', 'q2b_design', 'q3b_fd', 'q4b_algebra', 'q5b_nf', 'sql_exercises', 'sql_exercises2']) {
+for (const f of ['q1_mapping', 'q2_design', 'q3_fd', 'q4_algebra', 'q5_nf', 'sql_exercises']) {
   let src = fs.readFileSync(path.join(dir, 'data', f + '.js'), 'utf8');
   vm.runInContext('var QB=window.QB;' + src.replace('window.QB = window.QB || {};', 'window.QB = window.QB || {}; QB = window.QB;'), ctx, { filename: f });
 }

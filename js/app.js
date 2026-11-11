@@ -10,16 +10,18 @@ var SECTIONS = [
 var KEY = 'luyenthi_csdl_v1';
 var app = document.getElementById('app');
 var LETTERS = 'ABCD';
+var UNI_SCHEMA = 'STUDENT(SID, Name, Major, GPA); COURSE(CID, Title, Dept, Credits); ENROLL(SID, CID, Semester, Grade); INSTRUCTOR(IID, IName, Office); TEACH(IID, CID, Semester, Room); ROOM(Room, Building); ADVISE(IID, SID); CLUB(ClubID, ClubName); MEMBER(SID, ClubID); PREREQ(CID, PreCID)';
 
 // ---- Lưu trạng thái ----
-var st = { instant: true, quiz: {}, best: {}, sql: {} };
-var BANK = 2; // tăng khi ngân hàng câu hỏi thay đổi: lượt làm cũ không còn khớp số câu, tiến độ SQL vẫn giữ
+var st = { instant: true, quiz: {}, best: {}, sql: {}, wrong: {} };
+var BANK = 3; // tăng khi ngân hàng câu hỏi thay đổi: lượt làm cũ không còn khớp
 try {
   var raw = localStorage.getItem(KEY);
   if (raw) {
     var saved = JSON.parse(raw);
     for (var k in st) if (saved[k] !== undefined) st[k] = saved[k];
-    if (saved.bank !== BANK) { st.quiz = {}; st.best = {}; }
+    if (saved.bank !== BANK) { st.quiz = {}; st.best = {}; st.wrong = {}; }
+    if ((saved.bank || 0) < 3) st.sql = {}; // bài SQL đã đổi đề từ bản 3
   }
 } catch (e) {}
 st.bank = BANK;
@@ -53,8 +55,23 @@ function erd(d) {
 }
 
 // ---- Trắc nghiệm ----
+// Khóa lượt làm: "mapping" là bài đầy đủ, "mapping~" là lượt làm lại câu sai (lưu riêng để không mất bài đầy đủ).
+function secOf(key) { return key.split('~')[0]; }
+function isRetry(key) { return key.indexOf('~') > 0; }
+function wrongBook(id) { return st.wrong[id] || []; }
+function record(id, idx, v) {
+  var w = wrongBook(id).filter(function (i) { return i !== idx; });
+  if (v !== 0) w.push(idx);
+  st.wrong[id] = w;
+}
+function startRetry(id, subset) {
+  var list = (subset || wrongBook(id)).filter(function (i) { return i < QB[id].length; });
+  if (!list.length) { location.hash = '#/quiz/' + id; return; }
+  newAttempt(id + '~', list);
+  if (location.hash === '#/quiz/' + id + '~') route(); else location.hash = '#/quiz/' + id + '~';
+}
 function newAttempt(id, subset) {
-  var list = QB[id], order = shuffled(subset || range(list.length)), perm = {};
+  var list = QB[secOf(id)], order = shuffled(subset || range(list.length)), perm = {};
   order.forEach(function (i) {
     var p = shuffled([0, 1, 2, 3]);
     if (list[i].v && list[i].v.nf) p.sort(function (a, b) { return list[i].o[a] < list[i].o[b] ? -1 : 1; });
@@ -67,6 +84,13 @@ function newAttempt(id, subset) {
 function attempt(id) { return st.quiz[id] || newAttempt(id); }
 function tally(a) { var c = 0, d = 0; a.order.forEach(function (i) { if (a.ans[i] !== undefined) { d++; if (a.ans[i] === 0) c++; } }); return { correct: c, done: d, total: a.order.length }; }
 
+function retryRows() {
+  var rows = SECTIONS.filter(function (s) { return wrongBook(s.id).length; }).map(function (s) {
+    var n = wrongBook(s.id).length;
+    return '<a class="row" href="#/retry/' + s.id + '"><span class="n bad">' + n + '</span><span><h3>' + esc(s.title) + '</h3><p>Làm lại các câu đã trả lời sai; câu làm đúng sẽ được gạch khỏi sổ</p></span><span class="st"><b>' + n + '</b> câu sai</span></a>';
+  }).join('');
+  return rows ? '<div class="sec-title">Sổ câu sai</div><div class="list">' + rows + '</div>' : '';
+}
 function renderHome() {
   var totalPass = 0, totalParts = 0;
   SQLX.forEach(function (ex, n) { ex.parts.forEach(function (p, i) { totalParts++; if ((st.sql[n + '.' + i] || {}).ok) totalPass++; }); });
@@ -79,14 +103,16 @@ function renderHome() {
   }).join('');
   app.innerHTML = '<div class="wrap"><div class="hero"><h1>Luyện thi Cơ sở dữ liệu</h1><p>' + SECTIONS.reduce(function (n, s) { return n + QB[s.id].length; }, 0) + ' câu trắc nghiệm theo 5 phần và ' + SQLX.length + ' bài truy vấn SQL chấm tự động. Tiến độ được lưu trên trình duyệt này.</p></div>' +
     '<div class="sec-title">Trắc nghiệm</div><div class="list">' + rows + '</div>' +
+    retryRows() +
     '<div class="sec-title">Thực hành</div><div class="list"><a class="row" href="#/sql"><span class="n">SQL</span><span><h3>' + SQLX.length + ' bài truy vấn</h3><p>Viết câu lệnh, chạy thử trên dữ liệu thật và nộp để chấm</p></span><span class="st"><b>' + totalPass + '/' + totalParts + '</b> phần đạt</span></a></div></div>';
 }
 
 function renderQuiz(id) {
-  var sec = SECTIONS.filter(function (s) { return s.id === id; })[0];
+  var sid = secOf(id), retry = isRetry(id), sec = SECTIONS.filter(function (s) { return s.id === sid; })[0];
   if (!sec) { location.hash = '#/'; return; }
-  var a = attempt(id), list = QB[id];
-  if (a.result) return renderResult(sec, a, list);
+  if (retry && !st.quiz[id]) { location.hash = '#/quiz/' + sid; return; }
+  var a = attempt(id), list = QB[sid], book = wrongBook(sid).length;
+  if (a.result) return renderResult(sec, a, list, id);
   var idx = a.order[a.cur], q = list[idx], chosen = a.ans[idx], reveal = a.sub || (st.instant && chosen !== undefined), t = tally(a);
   var dots = a.order.map(function (qi, n) {
     var c = 'dot', v = a.ans[qi];
@@ -107,14 +133,15 @@ function renderQuiz(id) {
     explain = '<div class="explain">' + status + fmt(q.e) + '</div>';
   }
   var submitLabel = a.warned ? 'Còn ' + (t.total - t.done) + ' câu trống, nhấn lần nữa để nộp' : 'Nộp bài';
-  app.innerHTML = '<div class="wrap"><div class="top"><a class="back" href="#/">← Trang chủ</a><h1>' + esc(sec.title) + '</h1></div>' +
+  app.innerHTML = '<div class="wrap"><div class="top"><a class="back" href="#/">← Trang chủ</a><h1>' + (retry ? 'Làm lại câu sai · ' : '') + esc(sec.title) + '</h1></div>' +
     '<div class="progress"><i style="width:' + (t.done / t.total * 100) + '%"></i></div>' +
     '<div class="card"><div class="dots">' + dots + '</div></div>' +
     '<div class="bar"><span>Đã làm ' + t.done + '/' + t.total + '</span><span class="sp"></span>' +
     (a.sub ? '<button class="btn sm" data-act="show-result">Xem kết quả</button>' : '<label class="switch"><input type="checkbox" id="instant"' + (st.instant ? ' checked' : '') + '>Hiện đáp án ngay</label>') +
+    (retry ? '<a class="btn sm" href="#/quiz/' + sid + '" style="text-decoration:none">Về bài đầy đủ</a>' : (book ? '<button class="btn sm" data-act="retry-book">Làm lại câu sai (' + book + ')</button>' : '')) +
     '<button class="btn sm" data-act="restart">Làm lại</button></div>' +
     '<div class="q-head"><span class="pill">Trắc nghiệm một đáp án</span><span class="h">Chọn 1 đáp án đúng</span></div>' +
-    '<p class="qtext">' + fmt(q.q) + '</p>' + (q.d ? erd(q.d) : '') +
+    (q.sc ? '<p class="note">Lược đồ: ' + UNI_SCHEMA + '</p>' : '') + '<p class="qtext">' + fmt(q.q) + '</p>' + (q.d ? erd(q.d) : '') +
     '<div class="opts">' + opts + '</div>' + explain +
     '<div class="foot"><button class="btn" data-act="prev"' + (a.cur === 0 ? ' disabled' : '') + '>Câu trước</button><button class="btn" data-act="next"' + (a.cur === a.order.length - 1 ? ' disabled' : '') + '>Câu sau</button><span class="sp"></span>' +
     (a.sub ? '' : '<button class="btn pri" data-act="submit">' + submitLabel + '</button>') + '</div></div>';
@@ -123,21 +150,24 @@ function renderQuiz(id) {
   bindQuiz(id);
 }
 
-function renderResult(sec, a, list) {
+function renderResult(sec, a, list, id) {
+  var retry = isRetry(id), book = wrongBook(sec.id).length;
   var t = tally(a), wrong = a.order.filter(function (i) { return a.ans[i] !== 0; });
   var dots = a.order.map(function (qi, n) { var v = a.ans[qi]; return '<button class="dot ' + (v === 0 ? 'ok' : 'bad') + '" data-review="' + n + '">' + (n + 1) + '</button>'; }).join('');
   var pct = Math.round(t.correct / t.total * 100);
-  app.innerHTML = '<div class="wrap"><div class="top"><a class="back" href="#/">← Trang chủ</a><h1>' + esc(sec.title) + '</h1></div><div class="card score"><div class="big">' + t.correct + '/' + t.total + '</div><div class="sub">Đúng ' + pct + '%, chưa làm ' + (t.total - t.done) + ' câu</div>' +
+  app.innerHTML = '<div class="wrap"><div class="top"><a class="back" href="#/">← Trang chủ</a><h1>' + (retry ? 'Làm lại câu sai · ' : '') + esc(sec.title) + '</h1></div><div class="card score"><div class="big">' + t.correct + '/' + t.total + '</div><div class="sub">Đúng ' + pct + '%, chưa làm ' + (t.total - t.done) + ' câu</div>' +
     '<div class="dots">' + dots + '</div><div class="legend">Nhấn vào một câu để xem lại đáp án và lời giải</div>' +
-    '<div class="foot">' + (wrong.length ? '<button class="btn pri" data-act="retry-wrong">Làm lại ' + wrong.length + ' câu sai</button>' : '') + '<button class="btn" data-act="restart">Làm lại từ đầu</button></div></div></div>';
-  bindQuiz(sec.id);
+    '<div class="foot">' + (wrong.length ? '<button class="btn pri" data-act="retry-wrong">Làm lại ' + wrong.length + ' câu sai của lượt này</button>' : '') +
+    (book ? '<button class="btn" data-act="retry-book">Sổ câu sai (' + book + ')</button>' : '') +
+    (retry ? '<a class="btn" href="#/quiz/' + sec.id + '" style="text-decoration:none">Về bài đầy đủ</a>' : '<button class="btn" data-act="restart">Làm lại từ đầu</button>') + '</div></div></div>';
+  bindQuiz(id);
 }
 
 function bindQuiz(id) {
   var a = attempt(id);
   app.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { a.cur = +b.dataset.go; a.warned = false; save(); renderQuiz(id); }; });
   app.querySelectorAll('[data-review]').forEach(function (b) { b.onclick = function () { a.cur = +b.dataset.review; a.result = false; save(); renderQuiz(id); }; });
-  app.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { a.ans[a.order[a.cur]] = +b.dataset.pick; a.warned = false; save(); renderQuiz(id); }; });
+  app.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var qi = a.order[a.cur]; a.ans[qi] = +b.dataset.pick; if (st.instant) record(secOf(id), qi, a.ans[qi]); a.warned = false; save(); renderQuiz(id); }; });
   app.querySelectorAll('[data-act]').forEach(function (b) {
     b.onclick = function () {
       var act = b.dataset.act;
@@ -145,12 +175,14 @@ function bindQuiz(id) {
       else if (act === 'next') { a.cur++; a.warned = false; }
       else if (act === 'restart') { newAttempt(id); return renderQuiz(id); }
       else if (act === 'show-result') { a.result = true; }
-      else if (act === 'retry-wrong') { newAttempt(id, a.order.filter(function (i) { return a.ans[i] !== 0; })); return renderQuiz(id); }
+      else if (act === 'retry-wrong') { save(); return startRetry(secOf(id), a.order.filter(function (i) { return a.ans[i] !== 0; })); }
+      else if (act === 'retry-book') { save(); return startRetry(secOf(id)); }
       else if (act === 'submit') {
         var t = tally(a);
         if (t.done < t.total && !a.warned) { a.warned = true; save(); return renderQuiz(id); }
         a.sub = true; a.result = true;
-        if (t.total === QB[id].length && (st.best[id] === undefined || t.correct > st.best[id])) st.best[id] = t.correct;
+        a.order.forEach(function (i) { if (a.ans[i] !== undefined) record(secOf(id), i, a.ans[i]); });
+        if (!isRetry(id) && t.total === QB[id].length && (st.best[id] === undefined || t.correct > st.best[id])) st.best[id] = t.correct;
       }
       save(); renderQuiz(id);
     };
@@ -158,7 +190,7 @@ function bindQuiz(id) {
 }
 
 document.addEventListener('keydown', function (e) {
-  var m = location.hash.match(/^#\/quiz\/(\w+)/);
+  var m = location.hash.match(/^#\/quiz\/([\w~]+)/);
   if (!m || /TEXTAREA|INPUT/.test(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return;
   var a = st.quiz[m[1]]; if (!a || a.result) return;
   var pick = 'abcd'.indexOf(e.key.toLowerCase());
@@ -309,7 +341,8 @@ function renderSql(n) {
 function route() {
   var h = location.hash, m;
   window.scrollTo(0, 0);
-  if ((m = h.match(/^#\/quiz\/(\w+)/))) renderQuiz(m[1]);
+  if ((m = h.match(/^#\/retry\/(\w+)/))) { if (QB[m[1]]) startRetry(m[1]); else location.hash = '#/'; }
+  else if ((m = h.match(/^#\/quiz\/([\w~]+)/))) renderQuiz(m[1]);
   else if ((m = h.match(/^#\/sql\/(\d+)/))) renderSql(+m[1]);
   else if (h.indexOf('#/sql') === 0) renderSqlList();
   else renderHome();

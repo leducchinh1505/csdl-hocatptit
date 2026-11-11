@@ -116,3 +116,4 @@ pre.ans{margin:8px 0 10px;padding:12px 14px;background:var(--code);color:#e8edf5
  .foot .btn{flex:1 1 auto}
  .foot .sp{display:none}
 }
+.row .n.bad{background:var(--red-soft);color:var(--red)}
