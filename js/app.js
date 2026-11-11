@@ -59,10 +59,19 @@ function erd(d) {
 function secOf(key) { return key.split('~')[0]; }
 function isRetry(key) { return key.indexOf('~') > 0; }
 function wrongBook(id) { return st.wrong[id] || []; }
-function record(id, idx, v) {
+function record(id, idx, v, fromRetry) {
   var w = wrongBook(id).filter(function (i) { return i !== idx; });
   if (v !== 0) w.push(idx);
   st.wrong[id] = w;
+  // Làm đúng trong sổ câu sai thì câu đó trong bài đầy đủ cũng chuyển thành đúng.
+  var full = st.quiz[id];
+  if (fromRetry && v === 0 && full && full.ans[idx] !== undefined && full.ans[idx] !== 0) {
+    full.ans[idx] = 0;
+    full.fixed = full.fixed || {};
+    full.fixed[idx] = 1;
+    var t = tally(full);
+    if (full.sub && t.total === QB[id].length && (st.best[id] === undefined || t.correct > st.best[id])) st.best[id] = t.correct;
+  }
 }
 function startRetry(id, subset) {
   var list = (subset || wrongBook(id)).filter(function (i) { return i < QB[id].length; });
@@ -129,7 +138,7 @@ function renderQuiz(id) {
   }).join('');
   var explain = '';
   if (reveal) {
-    var status = chosen === undefined ? '<b class="bad">Chưa trả lời.</b> ' : chosen === 0 ? '<b class="ok">Chính xác.</b> ' : '<b class="bad">Chưa đúng.</b> ';
+    var status = chosen === undefined ? '<b class="bad">Chưa trả lời.</b> ' : chosen === 0 ? (a.fixed && a.fixed[idx] ? '<b class="ok">Đã làm lại đúng trong sổ câu sai.</b> ' : '<b class="ok">Chính xác.</b> ') : '<b class="bad">Chưa đúng.</b> ';
     explain = '<div class="explain">' + status + fmt(q.e) + '</div>';
   }
   var submitLabel = a.warned ? 'Còn ' + (t.total - t.done) + ' câu trống, nhấn lần nữa để nộp' : 'Nộp bài';
@@ -167,7 +176,7 @@ function bindQuiz(id) {
   var a = attempt(id);
   app.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { a.cur = +b.dataset.go; a.warned = false; save(); renderQuiz(id); }; });
   app.querySelectorAll('[data-review]').forEach(function (b) { b.onclick = function () { a.cur = +b.dataset.review; a.result = false; save(); renderQuiz(id); }; });
-  app.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var qi = a.order[a.cur]; a.ans[qi] = +b.dataset.pick; if (st.instant) record(secOf(id), qi, a.ans[qi]); a.warned = false; save(); renderQuiz(id); }; });
+  app.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var qi = a.order[a.cur]; a.ans[qi] = +b.dataset.pick; if (st.instant) record(secOf(id), qi, a.ans[qi], isRetry(id)); a.warned = false; save(); renderQuiz(id); }; });
   app.querySelectorAll('[data-act]').forEach(function (b) {
     b.onclick = function () {
       var act = b.dataset.act;
@@ -181,7 +190,7 @@ function bindQuiz(id) {
         var t = tally(a);
         if (t.done < t.total && !a.warned) { a.warned = true; save(); return renderQuiz(id); }
         a.sub = true; a.result = true;
-        a.order.forEach(function (i) { if (a.ans[i] !== undefined) record(secOf(id), i, a.ans[i]); });
+        a.order.forEach(function (i) { if (a.ans[i] !== undefined) record(secOf(id), i, a.ans[i], isRetry(id)); });
         if (!isRetry(id) && t.total === QB[id].length && (st.best[id] === undefined || t.correct > st.best[id])) st.best[id] = t.correct;
       }
       save(); renderQuiz(id);
